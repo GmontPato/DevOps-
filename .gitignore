@@ -1,0 +1,10 @@
+# Ignorar binarios y dependencias de Terraform
+.terraform/
+*.exe
+
+# Ignorar el estado de Terraform (contiene secretos)
+*.tfstate
+*.tfstate.backup
+
+# Ignorar archivos de variables sensibles
+*.tfvars
