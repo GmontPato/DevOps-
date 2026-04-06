@@ -74,3 +74,15 @@ variable "extra_tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "create_iam_resources" {
+  description = "Si es true, Terraform crea rol/politica/profile IAM para EC2. Si es false, usar existing_instance_profile_arn."
+  type        = bool
+  default     = true
+}
+
+variable "existing_instance_profile" {
+  description = "Instance Profile existente para EC2 cuando create_iam_resources=false. Puede ser ARN o nombre."
+  type        = string
+  default     = null
+}

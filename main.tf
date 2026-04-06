@@ -39,6 +39,10 @@ locals {
   )
 
   az_name = var.availability_zone != "" ? var.availability_zone : data.aws_availability_zones.available.names[0]
+  use_instance_profile       = var.create_iam_resources || (var.existing_instance_profile != null && trimspace(var.existing_instance_profile) != "")
+  existing_profile_is_arn    = var.existing_instance_profile != null ? can(regex("^arn:aws:iam::[0-9]{12}:instance-profile/.+", trimspace(var.existing_instance_profile))) : false
+  instance_profile_arn_value = local.use_instance_profile ? (var.create_iam_resources ? aws_iam_instance_profile.ec2_instance_profile[0].arn : (local.existing_profile_is_arn ? trimspace(var.existing_instance_profile) : null)) : null
+  instance_profile_name      = local.use_instance_profile ? (var.create_iam_resources ? null : (local.existing_profile_is_arn ? null : trimspace(var.existing_instance_profile))) : null
 }
 
 # ----------------------------------------------------
@@ -231,6 +235,7 @@ resource "aws_security_group" "sg_data" {
 # Rol IAM para AWS Session Manager
 # ----------------------------------------------------
 resource "aws_iam_role" "ec2_ssm_role" {
+  count = var.create_iam_resources ? 1 : 0
   name = "${var.project_name}-ec2-ssm-role"
 
   assume_role_policy = jsonencode({
@@ -250,13 +255,15 @@ resource "aws_iam_role" "ec2_ssm_role" {
 }
 
 resource "aws_iam_role_policy_attachment" "ssm_core_attachment" {
-  role       = aws_iam_role.ec2_ssm_role.name
+  count      = var.create_iam_resources ? 1 : 0
+  role       = aws_iam_role.ec2_ssm_role[0].name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
 resource "aws_iam_instance_profile" "ec2_instance_profile" {
+  count = var.create_iam_resources ? 1 : 0
   name = "${var.project_name}-ec2-instance-profile"
-  role = aws_iam_role.ec2_ssm_role.name
+  role = aws_iam_role.ec2_ssm_role[0].name
 }
 
 # ----------------------------------------------------
@@ -268,11 +275,16 @@ resource "aws_launch_template" "lt_front" {
   instance_type = var.instance_type
   key_name      = var.key_name
 
-  iam_instance_profile {
-    arn = aws_iam_instance_profile.ec2_instance_profile.arn
+  dynamic "iam_instance_profile" {
+    for_each = local.use_instance_profile ? [1] : []
+    content {
+      arn  = local.instance_profile_arn_value
+      name = local.instance_profile_name
+    }
   }
 
   network_interfaces {
+    subnet_id                   = aws_subnet.public_frontend.id
     associate_public_ip_address = true
     security_groups             = [aws_security_group.sg_front.id]
   }
@@ -294,11 +306,16 @@ resource "aws_launch_template" "lt_back" {
   instance_type = var.instance_type
   key_name      = var.key_name
 
-  iam_instance_profile {
-    arn = aws_iam_instance_profile.ec2_instance_profile.arn
+  dynamic "iam_instance_profile" {
+    for_each = local.use_instance_profile ? [1] : []
+    content {
+      arn  = local.instance_profile_arn_value
+      name = local.instance_profile_name
+    }
   }
 
   network_interfaces {
+    subnet_id                   = aws_subnet.private_backend_data.id
     associate_public_ip_address = false
     security_groups             = [aws_security_group.sg_back.id]
   }
@@ -320,11 +337,16 @@ resource "aws_launch_template" "lt_data" {
   instance_type = var.instance_type
   key_name      = var.key_name
 
-  iam_instance_profile {
-    arn = aws_iam_instance_profile.ec2_instance_profile.arn
+  dynamic "iam_instance_profile" {
+    for_each = local.use_instance_profile ? [1] : []
+    content {
+      arn  = local.instance_profile_arn_value
+      name = local.instance_profile_name
+    }
   }
 
   network_interfaces {
+    subnet_id                   = aws_subnet.private_backend_data.id
     associate_public_ip_address = false
     security_groups             = [aws_security_group.sg_data.id]
   }
@@ -341,8 +363,6 @@ resource "aws_launch_template" "lt_data" {
 }
 
 resource "aws_instance" "frontend" {
-  subnet_id = aws_subnet.public_frontend.id
-
   launch_template {
     id      = aws_launch_template.lt_front.id
     version = "$Latest"
@@ -354,8 +374,6 @@ resource "aws_instance" "frontend" {
 }
 
 resource "aws_instance" "backend" {
-  subnet_id = aws_subnet.private_backend_data.id
-
   launch_template {
     id      = aws_launch_template.lt_back.id
     version = "$Latest"
@@ -367,8 +385,6 @@ resource "aws_instance" "backend" {
 }
 
 resource "aws_instance" "data" {
-  subnet_id = aws_subnet.private_backend_data.id
-
   launch_template {
     id      = aws_launch_template.lt_data.id
     version = "$Latest"
