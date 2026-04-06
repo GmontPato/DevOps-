@@ -1,10 +1,40 @@
-# Ignorar binarios y dependencias de Terraform
+# Archivos de sistema operativo e IDEs
+.DS_Store
+Thumbs.db
+*.lnk
+.idea/
+.vscode/
+*.code-workspace
+
+# Terraform e Infraestructura
 .terraform/
-*.exe
-
-# Ignorar el estado de Terraform (contiene secretos)
 *.tfstate
+*.tfstate.*
 *.tfstate.backup
+crash.log
 
-# Ignorar archivos de variables sensibles
+# Variables sensibles y credenciales
+# IMPORTANTE: No subir estos archivos
+*.env
+.env.*
 *.tfvars
+
+# Dependencias y cache de lenguajes
+node_modules/
+__pycache__/
+*.pyc
+
+# Binarios y archivos de salida
+*.out
+*.exe
+*.dll
+*.so
+
+# Archivos temporales y backups
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+*.old
+*~
