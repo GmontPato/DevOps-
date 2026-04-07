@@ -39,10 +39,10 @@ locals {
   )
 
   az_name = var.availability_zone != "" ? var.availability_zone : data.aws_availability_zones.available.names[0]
-  use_instance_profile       = var.create_iam_resources || (var.existing_instance_profile != null && trimspace(var.existing_instance_profile) != "")
-  existing_profile_is_arn    = var.existing_instance_profile != null ? can(regex("^arn:aws:iam::[0-9]{12}:instance-profile/.+", trimspace(var.existing_instance_profile))) : false
-  instance_profile_arn_value = local.use_instance_profile ? (var.create_iam_resources ? aws_iam_instance_profile.ec2_instance_profile[0].arn : (local.existing_profile_is_arn ? trimspace(var.existing_instance_profile) : null)) : null
-  instance_profile_name      = local.use_instance_profile ? (var.create_iam_resources ? null : (local.existing_profile_is_arn ? null : trimspace(var.existing_instance_profile))) : null
+
+  use_instance_profile       = false
+  instance_profile_arn_value = null
+  instance_profile_name      = null
 }
 
 # ----------------------------------------------------
@@ -146,7 +146,7 @@ resource "aws_route_table_association" "private_assoc" {
 }
 
 # ----------------------------------------------------
-# Grupos de seguridad (Mínimo privilegio)
+# Grupos de seguridad
 # ----------------------------------------------------
 resource "aws_security_group" "sg_front" {
   name        = "${var.project_name}-sg-front"
@@ -232,56 +232,13 @@ resource "aws_security_group" "sg_data" {
 }
 
 # ----------------------------------------------------
-# Rol IAM para AWS Session Manager
-# ----------------------------------------------------
-resource "aws_iam_role" "ec2_ssm_role" {
-  count = var.create_iam_resources ? 1 : 0
-  name = "${var.project_name}-ec2-ssm-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-        Action = "sts:AssumeRole"
-      }
-    ]
-  })
-
-  tags = local.common_tags
-}
-
-resource "aws_iam_role_policy_attachment" "ssm_core_attachment" {
-  count      = var.create_iam_resources ? 1 : 0
-  role       = aws_iam_role.ec2_ssm_role[0].name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-}
-
-resource "aws_iam_instance_profile" "ec2_instance_profile" {
-  count = var.create_iam_resources ? 1 : 0
-  name = "${var.project_name}-ec2-instance-profile"
-  role = aws_iam_role.ec2_ssm_role[0].name
-}
-
-# ----------------------------------------------------
-# Capa de computo (Launch Templates + instancias EC2)
+# Launch Templates
 # ----------------------------------------------------
 resource "aws_launch_template" "lt_front" {
   name_prefix   = "${var.project_name}-lt-front-"
   image_id      = data.aws_ami.amazon_linux_2.id
   instance_type = var.instance_type
   key_name      = var.key_name
-
-  dynamic "iam_instance_profile" {
-    for_each = local.use_instance_profile ? [1] : []
-    content {
-      arn  = local.instance_profile_arn_value
-      name = local.instance_profile_name
-    }
-  }
 
   network_interfaces {
     subnet_id                   = aws_subnet.public_frontend.id
@@ -306,14 +263,6 @@ resource "aws_launch_template" "lt_back" {
   instance_type = var.instance_type
   key_name      = var.key_name
 
-  dynamic "iam_instance_profile" {
-    for_each = local.use_instance_profile ? [1] : []
-    content {
-      arn  = local.instance_profile_arn_value
-      name = local.instance_profile_name
-    }
-  }
-
   network_interfaces {
     subnet_id                   = aws_subnet.private_backend_data.id
     associate_public_ip_address = false
@@ -337,14 +286,6 @@ resource "aws_launch_template" "lt_data" {
   instance_type = var.instance_type
   key_name      = var.key_name
 
-  dynamic "iam_instance_profile" {
-    for_each = local.use_instance_profile ? [1] : []
-    content {
-      arn  = local.instance_profile_arn_value
-      name = local.instance_profile_name
-    }
-  }
-
   network_interfaces {
     subnet_id                   = aws_subnet.private_backend_data.id
     associate_public_ip_address = false
@@ -362,6 +303,9 @@ resource "aws_launch_template" "lt_data" {
   }
 }
 
+# ----------------------------------------------------
+# EC2
+# ----------------------------------------------------
 resource "aws_instance" "frontend" {
   launch_template {
     id      = aws_launch_template.lt_front.id
