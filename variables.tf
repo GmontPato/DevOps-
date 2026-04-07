@@ -49,7 +49,7 @@ variable "instance_type" {
 variable "key_name" {
   description = "Nombre opcional del par de llaves EC2 para acceso SSH."
   type        = string
-  default     = null
+  default     = vockey
 }
 
 variable "ssh_allowed_cidr" {
